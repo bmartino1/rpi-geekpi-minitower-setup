@@ -1,15 +1,25 @@
 # Third-party notices
 
-This repository installs or interacts with the following projects at runtime:
+This repository contains or installs components from the following projects.
 
-- **geeekpi/absminitowerkit** — MIT License; original ABS Mini Tower driver and
-  installation work by 52 Information Technology., LTD.
-- **rm-hull/luma.examples / luma.oled** — used for OLED support and examples;
-  see the upstream repositories for their current license terms.
-- **jgarff/rpi_ws281x** — used to build the WS281x moodlight test binary; see
-  the upstream repository for its current license terms.
-- **Adafruit Blinka / CircuitPython NeoPixel** — used by the RGB-off helper;
-  see Adafruit's upstream projects for their current license terms.
+## Vendored
 
-No third-party Git repository is vendored into this repository by the
-installer; they are cloned/installed from their upstream locations.
+- **geeekpi/absminitowerkit** — MIT License; original ABS Mini Tower driver,
+  service files, and ARM64 moodlight binary by 52 Information Technology., LTD.
+  A historical source snapshot is retained under `vendor/upstream/` and the
+  runtime moodlight binary under `vendor/geeekpi/`.
+- **gentleone/absminitowerkit** — MIT License; historical/community ABS Mini
+  Tower implementation retained under `vendor/upstream/` for reference.
+- **rm-hull/luma.examples** — MIT License; a minimal OLED test subset is
+  retained under `vendor/luma.examples/` with its license notice.
+
+## Installed as runtime dependencies
+
+- **luma.oled / luma.core** — OLED runtime support installed through Python
+  packaging.
+- **Adafruit Blinka / CircuitPython NeoPixel** — RGB-off helper dependencies,
+  installed only for RGB modes.
+- **RPi.GPIO** and related Raspberry Pi Python support packages.
+
+Vendored third-party files remain under their original licenses. This
+repository's own code is covered by the top-level `LICENSE`.

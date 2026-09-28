@@ -12,16 +12,21 @@ and manual systemd edits every time.
 > GeeekPi/52Pi. See [docs/UPSTREAM.md](docs/UPSTREAM.md) and
 > [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Target behavior
+## Operating modes
 
-After a normal cold boot:
+The installer asks which behavior you want. The default/recommended mode matches
+the configuration validated on a working Raspberry Pi 4 MiniTower:
 
-- the case/CPU fan remains powered and spinning;
-- the 128x64 front OLED displays system information;
-- the MiniTower moodlight hardware is initialized;
-- the four WS281x/NeoPixel RGB LEDs are turned **off** after initialization;
-- the OLED remains on after the RGB-off action;
-- all three services are managed by systemd.
+1. **RGB off (`rgb-off`)** — fan remains powered, OLED shows system information,
+   MiniTower RGB hardware initializes, then the four WS281x/NeoPixel LEDs are
+   turned off after about 10 seconds.
+2. **Moodlight (`moodlight`)** — fan remains powered, OLED shows system
+   information, and the MiniTower RGB moodlight service remains running.
+3. **OLED only (`oled-only`)** — OLED system information is enabled and both RGB
+   services are disabled. Fan power is left to the MiniTower case hardware.
+
+The installer manages these choices through systemd and can be rerun later to
+change modes.
 
 The Pi 4 NAS kit commonly sold as Amazon ASIN **B0B6V66PRB** uses the ABS Mini
 Tower format with the ICE Tower cooler, PWM/RGB fan, OLED board, and M.2 SATA
@@ -44,8 +49,8 @@ OLED/RGB setup described above.
 - Uses `--break-system-packages` where modern Debian PEP 668 requires it.
 - Explicitly installs `fonts-dejavu-core`, preventing the common OLED
   `OSError: cannot open resource` failure.
-- Installs `luma.examples` to `/opt/luma.examples` so `clock.py` and the other
-  hardware demos are always available.
+- Ships a vendored Luma OLED test subset and installs it to `/opt/luma.examples`,
+  so `clock.py` remains available even if the upstream examples repo changes.
 - Uses `/boot/firmware/config.txt` when present, with `/boot/config.txt` only as
   a compatibility fallback.
 - Does **not** rewrite `/etc/resolv.conf` or force public DNS servers.
@@ -66,10 +71,23 @@ sudo -i
 apt update
 apt install -y git
 
-git clone https://github.com/YOUR-GITHUB-USER/rpi-abs-minitower-setup.git
-cd rpi-abs-minitower-setup
+git clone https://github.com/bmartino1/rpi-geekpi-minitower-setup.git
+cd rpi-geekpi-minitower-setup
 ./install.sh
 ```
+
+With no mode option, `./install.sh` shows an interactive menu. For scripted or
+repeat installs, select the mode explicitly:
+
+```bash
+./install.sh --mode rgb-off
+./install.sh --mode moodlight
+./install.sh --mode oled-only
+```
+
+Short aliases are also available: `--rgb-off`, `--moodlight`, and `--oled-only`.
+If the installer is run non-interactively without a mode, it defaults to
+`rgb-off`.
 
 The installer reboots by default. To inspect everything before rebooting:
 
@@ -85,11 +103,14 @@ systemctl reboot
 
 ## Verify after reboot
 
-Physically confirm:
+For the recommended `rgb-off` mode, physically confirm:
 
 - **fan:** spinning
 - **OLED:** on and updating
 - **RGB:** off roughly 10 seconds after MiniTower service initialization
+
+For `moodlight`, the RGB service should remain active. For `oled-only`, the RGB
+services should remain disabled.
 
 Then run:
 
@@ -103,7 +124,7 @@ systemctl status \
 systemctl --failed
 ```
 
-Expected systemd states:
+Expected systemd states for the recommended `rgb-off` mode:
 
 ```text
 minitower_moodlight.service      active (running)
@@ -127,10 +148,10 @@ i2cdetect -y 1
 
 Normally the OLED is at `0x3c`.
 
-Test a stock Luma demo:
+Test the vendored Luma clock demo:
 
 ```bash
-python3 /opt/luma.examples/examples/clock.py
+python3 /opt/luma.examples/examples/clock.py -d ssd1305 -i i2c --width 128 --height 64
 ```
 
 Test the production display directly:
@@ -143,8 +164,8 @@ python3 /usr/local/minitower/sysinfo.py
 
 ### `minitower_moodlight.service`
 
-Starts the `rpi_ws281x` hardware/test process used by the original MiniTower
-setup. It remains running.
+Starts the vendored ARM64 GeeekPi moodlight/test binary used by the original
+MiniTower setup. It remains running in RGB modes.
 
 ### `minitower_oled.service`
 
@@ -155,8 +176,8 @@ Runs:
 ```
 
 The production OLED code talks directly to the SSD1305 via `luma.oled`; it does
-not depend on the `luma.examples` source tree. The examples are installed only
-for testing/demo use.
+not depend on the Luma example files. A small vendored Luma test subset is
+installed only for hardware validation.
 
 ### `minitower_disable_led.service`
 
@@ -169,17 +190,33 @@ Runs **after** moodlight and OLED services, waits 10 seconds, then executes:
 This leaves the fan running and OLED active while setting all four RGB pixels
 to `(0, 0, 0)`.
 
+
+## Self-contained case assets
+
+The case-specific recovery files are kept in this repository under `vendor/`:
+
+- a minimal Luma `clock.py` / `demo_opts.py` test subset;
+- the official GeeekPi ARM64 moodlight binary and license;
+- reference snapshots of the official GeeekPi and gentleone MiniTower repos.
+
+This means the installer no longer needs to clone those repositories while a
+Pi is being rebuilt. Runtime Python libraries are still installed from Debian /
+Python packaging so security and compatibility fixes can be received normally.
+See [docs/VENDORED.md](docs/VENDORED.md).
+
 ## Rebuilding from a known-good Pi
 
-A state-capture helper is included. On a working machine run:
+Two capture helpers are included. On a working machine run:
 
 ```bash
 ./tools/collect-working-state.sh
+./tools/capture-working-assets.sh
 ```
 
-It records package versions, Python modules, I2C status, service definitions,
-service logs, and the current installed scripts. Use that report to pin or
-adjust future releases without guessing.
+The first records package versions, Python modules, I2C status, service
+definitions, logs, and installed scripts. The second also copies the actually
+running moodlight binary and MiniTower files into a tarball so a known-good
+installation can be compared with or imported into a future release.
 
 ## Uninstall
 
@@ -187,9 +224,9 @@ adjust future releases without guessing.
 sudo ./uninstall.sh
 ```
 
-The uninstaller removes the MiniTower services and local MiniTower files, but
-intentionally leaves I2C enabled and leaves common Python/APT dependencies and
-cloned third-party source trees in place.
+The uninstaller removes the MiniTower services, `/usr/local/minitower`, the
+vendored moodlight install, and `/opt/luma.examples`. It intentionally leaves
+I2C enabled and leaves common Python/APT dependencies in place.
 
 ## Troubleshooting
 

@@ -18,15 +18,14 @@ systemctl daemon-reload
 systemctl reset-failed
 rm -rf /usr/local/minitower
 rm -f /usr/local/bin/minitower-moodlight
+rm -rf /opt/luma.examples
 
 cat <<'MSG'
-MiniTower services and locally installed MiniTower files were removed.
+MiniTower services and files installed by this repository were removed.
 
 Deliberately left in place:
   - I2C configuration
   - APT/Python dependencies
-  - /opt/luma.examples
-  - /usr/local/src/rpi_ws281x
 
 Those may be used by other Raspberry Pi hardware/software.
 MSG

@@ -34,3 +34,12 @@ card, without rediscovering several unrelated fixes each time:
    afterward;
 7. systemd service ordering proven on a cold boot;
 8. no modification of `/etc/resolv.conf`.
+
+## This repository
+
+Canonical repository:
+https://github.com/bmartino1/rpi-geekpi-minitower-setup
+
+Unlike the historical install paths, the supported installer uses the vendored
+case-specific files in this repository for Luma hardware testing and the ARM64
+moodlight executable. See [VENDORED.md](VENDORED.md).
