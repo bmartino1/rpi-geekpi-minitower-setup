@@ -1,0 +1,13 @@
+[Unit]
+Description=Disable ABS MiniTower RGB after hardware initialization
+After=minitower_moodlight.service minitower_oled.service
+Wants=minitower_moodlight.service minitower_oled.service
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 10
+ExecStart=/usr/bin/python3 /usr/local/minitower/turnoff_leds.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
