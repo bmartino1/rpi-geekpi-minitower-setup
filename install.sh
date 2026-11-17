@@ -164,7 +164,12 @@ python3 -m pip install --break-system-packages \
 
 if [[ "$MODE" != "oled-only" ]]; then
     log "Installing RGB/NeoPixel Python packages (PEP 668 aware)"
+    # Blinka/NeoPixel does not always pull the Raspberry Pi WS281x backend in
+    # automatically (notably on Debian/Raspberry Pi OS Trixie + Python 3.13).
+    # Without it, importing neopixel fails with:
+    # ModuleNotFoundError: No module named '_rpi_ws281x'
     python3 -m pip install --break-system-packages \
+        'rpi_ws281x>=4.0.0' \
         adafruit-blinka \
         adafruit-circuitpython-neopixel
 fi
@@ -263,8 +268,10 @@ PY
 
 if [[ "$MODE" != "oled-only" ]]; then
     python3 - <<'PY'
+import _rpi_ws281x
 import board
 import neopixel
+print("rpi_ws281x backend import: OK")
 print("RGB/NeoPixel Python imports: OK")
 PY
 fi
