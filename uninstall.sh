@@ -9,7 +9,7 @@ if [[ ${EUID} -ne 0 ]]; then
     exit 1
 fi
 
-for unit in minitower_disable_led.service minitower_oled.service minitower_moodlight.service; do
+for unit in minitower_disable_led.service minitower_oled.service minitower_moodlight.service minitower_solid_color.service minitower_blue.service; do
     systemctl disable --now "$unit" 2>/dev/null || true
     rm -f "/etc/systemd/system/$unit"
 done
@@ -17,6 +17,7 @@ done
 systemctl daemon-reload
 systemctl reset-failed
 rm -rf /usr/local/minitower
+rm -f /etc/default/minitower-color
 rm -f /usr/local/bin/minitower-moodlight
 rm -rf /opt/luma.examples
 
