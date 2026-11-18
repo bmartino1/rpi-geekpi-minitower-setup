@@ -24,6 +24,9 @@ the configuration validated on a working Raspberry Pi 4 MiniTower:
    information, and the MiniTower RGB moodlight service remains running.
 3. **OLED only (`oled-only`)** — OLED system information is enabled and both RGB
    services are disabled. Fan power is left to the MiniTower case hardware.
+4. **Solid color (`solid-color`)** — OLED and fan stay on, and all four RGB LEDs
+   use a fixed color. Defaults to **solid blue at 30% brightness**, matching the
+   tested PiTower setup. Choose a named color or 6-digit RGB hex value.
 
 The installer manages these choices through systemd and can be rerun later to
 change modes.
@@ -47,6 +50,9 @@ OLED/RGB setup described above.
 
 - Supports running the installer directly as `root`.
 - Uses `--break-system-packages` where modern Debian PEP 668 requires it.
+- Installs `rpi_ws281x` and `Adafruit-Blinka-Raspberry-Pi-PWM` explicitly
+  for modern Raspberry Pi OS / Debian Trixie RGB support, avoiding missing
+  platform-dependency prompts during first boot.
 - Explicitly installs `fonts-dejavu-core`, preventing the common OLED
   `OSError: cannot open resource` failure.
 - Ships a vendored Luma OLED test subset and installs it to `/opt/luma.examples`,
@@ -83,9 +89,14 @@ repeat installs, select the mode explicitly:
 ./install.sh --mode rgb-off
 ./install.sh --mode moodlight
 ./install.sh --mode oled-only
+./install.sh --mode solid-color
+./install.sh --mode solid-color --color red --brightness 0.50
+./install.sh --solid-color --color '#0080FF' --brightness 0.30
 ```
 
-Short aliases are also available: `--rgb-off`, `--moodlight`, and `--oled-only`.
+Short aliases are also available: `--rgb-off`, `--moodlight`, `--oled-only`,
+and `--solid-color`. Named colors are blue, red, green, white, purple,
+cyan, yellow, and orange. Brightness ranges from 0.0 to 1.0.
 If the installer is run non-interactively without a mode, it defaults to
 `rgb-off`.
 
@@ -110,7 +121,9 @@ For the recommended `rgb-off` mode, physically confirm:
 - **RGB:** off roughly 10 seconds after MiniTower service initialization
 
 For `moodlight`, the RGB service should remain active. For `oled-only`, the RGB
-services should remain disabled.
+services should remain disabled. For `solid-color`, all four LEDs should hold
+the selected color; `minitower_solid_color.service` should show
+`active (exited)`, which is expected for a oneshot service.
 
 Then run:
 
@@ -119,6 +132,7 @@ systemctl status \
   minitower_moodlight.service \
   minitower_oled.service \
   minitower_disable_led.service \
+  minitower_solid_color.service \
   --no-pager -l
 
 systemctl --failed
@@ -166,6 +180,14 @@ python3 /usr/local/minitower/sysinfo.py
 
 Starts the vendored ARM64 GeeekPi moodlight/test binary used by the original
 MiniTower setup. It remains running in RGB modes.
+
+### `minitower_solid_color.service`
+
+Runs `/usr/local/minitower/solid_color.py` once at boot to set all four
+NeoPixel LEDs on GPIO18. Reads `/etc/default/minitower-color` for
+`MINITOWER_COLOR` and `MINITOWER_BRIGHTNESS`. No rainbow/moodlight
+process is left running. Settings are created by the installer when you choose
+`solid-color`. To change them later, edit that file and restart the service.
 
 ### `minitower_oled.service`
 
@@ -224,7 +246,7 @@ installation can be compared with or imported into a future release.
 sudo ./uninstall.sh
 ```
 
-The uninstaller removes the MiniTower services, `/usr/local/minitower`, the
+The uninstaller removes the MiniTower services (including solid-color), `/usr/local/minitower`, the
 vendored moodlight install, and `/opt/luma.examples`. It intentionally leaves
 I2C enabled and leaves common Python/APT dependencies in place.
 
