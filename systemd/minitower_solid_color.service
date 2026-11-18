@@ -1,0 +1,14 @@
+[Unit]
+Description=ABS MiniTower solid-color RGB
+After=local-fs.target minitower_oled.service
+Wants=minitower_oled.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-/etc/default/minitower-color
+ExecStart=/usr/bin/python3 /usr/local/minitower/solid_color.py
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
