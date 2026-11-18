@@ -337,7 +337,6 @@ if [[ "$MODE" != "oled-only" ]]; then
 import _rpi_ws281x
 import board
 import neopixel
-import adafruit_blinka_raspberry_pi_pwm
 print("rpi_ws281x backend import: OK")
 print("RGB/NeoPixel Python imports: OK")
 PY
