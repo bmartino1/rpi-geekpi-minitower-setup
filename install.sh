@@ -24,12 +24,17 @@ Operating modes:
   1 / rgb-off    OLED + fan + initialize RGB, then turn RGB off (recommended)
   2 / moodlight  OLED + fan + keep the MiniTower RGB moodlight running
   3 / oled-only  OLED only; do not start either RGB service
+  4 / solid-color OLED + fan + solid RGB color (default blue, 30% brightness)
 
 The case fan is powered by the MiniTower hardware. These mode choices control
 OLED/RGB services; they do not intentionally turn off fan power.
 
 Options:
-  --mode MODE       MODE is rgb-off, moodlight, or oled-only
+  --mode MODE       MODE is rgb-off, moodlight, oled-only, or solid-color
+  --color COLOR     Solid color name (blue/red/green/white/purple/cyan/yellow/orange)
+                    or RRGGBB hex; default blue
+  --brightness N    Solid color brightness, 0.0 to 1.0; default 0.30
+  --solid-color     Alias for --mode solid-color
   --rgb-off         Alias for --mode rgb-off
   --moodlight       Alias for --mode moodlight
   --oled-only       Alias for --mode oled-only
@@ -50,6 +55,8 @@ fi
 
 NO_REBOOT=0
 MODE=""
+SOLID_COLOR="blue"
+SOLID_BRIGHTNESS="0.30"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-reboot)
@@ -63,6 +70,28 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mode=*)
             MODE="${1#*=}"
+            shift
+            ;;
+        --color)
+            [[ $# -ge 2 ]] || die "--color requires a name or RRGGBB value"
+            SOLID_COLOR="$2"
+            shift 2
+            ;;
+        --color=*)
+            SOLID_COLOR="${1#*=}"
+            shift
+            ;;
+        --brightness)
+            [[ $# -ge 2 ]] || die "--brightness requires a number between 0 and 1"
+            SOLID_BRIGHTNESS="$2"
+            shift 2
+            ;;
+        --brightness=*)
+            SOLID_BRIGHTNESS="${1#*=}"
+            shift
+            ;;
+        --solid-color)
+            MODE="solid-color"
             shift
             ;;
         --rgb-off)
@@ -96,7 +125,8 @@ choose_mode() {
         printf '\nChoose MiniTower operating mode:\n\n'
         printf '  1) OLED + fan + RGB OFF after initialization  [recommended]\n'
         printf '  2) OLED + fan + RGB moodlight ON\n'
-        printf '  3) OLED only (no RGB services)\n\n'
+        printf '  3) OLED only (no RGB services)\n'
+        printf '  4) OLED + fan + solid RGB color (blue by default)\n\n'
         printf 'Selection [1]: '
         read -r selection
         selection="${selection:-1}"
@@ -104,6 +134,7 @@ choose_mode() {
             1|rgb-off)   MODE="rgb-off" ;;
             2|moodlight) MODE="moodlight" ;;
             3|oled-only) MODE="oled-only" ;;
+            4|solid-color) MODE="solid-color" ;;
             *) die "Invalid selection: $selection" ;;
         esac
     else
@@ -114,9 +145,22 @@ choose_mode() {
 
 choose_mode
 case "$MODE" in
-    rgb-off|moodlight|oled-only) ;;
-    *) die "Invalid mode '$MODE'. Use rgb-off, moodlight, or oled-only." ;;
+    rgb-off|moodlight|oled-only|solid-color) ;;
+    *) die "Invalid mode '$MODE'. Use rgb-off, moodlight, oled-only, or solid-color." ;;
 esac
+
+if [[ "$MODE" == "solid-color" ]]; then
+    # Validate without evaluating user-supplied text as shell arithmetic.
+    case "${SOLID_COLOR,,}" in
+        blue|red|green|white|purple|cyan|yellow|orange) ;;
+        *)
+            [[ "$SOLID_COLOR" =~ ^#?[[:xdigit:]]{6}$ ]] ||
+                die "Invalid color. Use a supported name or 6-digit hex RGB value."
+            ;;
+    esac
+    [[ "$SOLID_BRIGHTNESS" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]] ||
+        die "Brightness must be from 0 to 1 (e.g. 0.30)."
+fi
 
 [[ -r /etc/os-release ]] || die "/etc/os-release not found"
 # shellcheck disable=SC1091
@@ -171,6 +215,7 @@ if [[ "$MODE" != "oled-only" ]]; then
     python3 -m pip install --break-system-packages \
         'rpi_ws281x>=4.0.0' \
         adafruit-blinka \
+        'Adafruit-Blinka-Raspberry-Pi-PWM>=1.0.2' \
         adafruit-circuitpython-neopixel
 fi
 
@@ -220,16 +265,29 @@ log "Installing MiniTower scripts"
 install -d -m 0755 "$INSTALL_DIR"
 install -m 0755 "$SCRIPT_DIR/src/sysinfo.py" "$INSTALL_DIR/sysinfo.py"
 install -m 0755 "$SCRIPT_DIR/src/turnoff_leds.py" "$INSTALL_DIR/turnoff_leds.py"
+install -m 0755 "$SCRIPT_DIR/src/solid_color.py" "$INSTALL_DIR/solid_color.py"
+if [[ "$MODE" == "solid-color" ]]; then
+    # Use a root-owned config file instead of embedding choices in systemd ExecStart.
+    install -d -m 0755 /etc/default
+    printf 'MINITOWER_COLOR=%s\nMINITOWER_BRIGHTNESS=%s\n' "$SOLID_COLOR" "$SOLID_BRIGHTNESS" > /etc/default/minitower-color
+    chmod 0644 /etc/default/minitower-color
+fi
 
 log "Installing systemd units"
 install -m 0644 "$SCRIPT_DIR/systemd/minitower_moodlight.service" /etc/systemd/system/minitower_moodlight.service
 install -m 0644 "$SCRIPT_DIR/systemd/minitower_oled.service" /etc/systemd/system/minitower_oled.service
 install -m 0644 "$SCRIPT_DIR/systemd/minitower_disable_led.service" /etc/systemd/system/minitower_disable_led.service
+install -m 0644 "$SCRIPT_DIR/systemd/minitower_solid_color.service" /etc/systemd/system/minitower_solid_color.service
 
 # Obsolete workaround from earlier manual installs. Explicit service ordering now
 # handles the OLED/RGB boot sequence.
 if systemctl list-unit-files minitower_ledfix.service >/dev/null 2>&1; then
     systemctl disable minitower_ledfix.service 2>/dev/null || true
+fi
+
+# Retire the earlier manually configured blue service to avoid two controllers.
+if systemctl list-unit-files minitower_blue.service --no-legend 2>/dev/null | grep -q minitower_blue; then
+    systemctl disable minitower_blue.service 2>/dev/null || true
 fi
 
 systemctl daemon-reload
@@ -242,16 +300,24 @@ systemctl enable minitower_oled.service
 # resist a live stop; the normal reboot at the end applies the selected state.
 case "$MODE" in
     rgb-off)
+        systemctl disable minitower_solid_color.service 2>/dev/null || true
         systemctl enable minitower_moodlight.service
         systemctl enable minitower_disable_led.service
         ;;
     moodlight)
+        systemctl disable minitower_solid_color.service 2>/dev/null || true
         systemctl enable minitower_moodlight.service
         systemctl disable minitower_disable_led.service 2>/dev/null || true
         ;;
     oled-only)
+        systemctl disable minitower_solid_color.service 2>/dev/null || true
         systemctl disable minitower_moodlight.service 2>/dev/null || true
         systemctl disable minitower_disable_led.service 2>/dev/null || true
+        ;;
+    solid-color)
+        systemctl disable minitower_moodlight.service 2>/dev/null || true
+        systemctl disable minitower_disable_led.service 2>/dev/null || true
+        systemctl enable minitower_solid_color.service
         ;;
 esac
 
@@ -271,6 +337,7 @@ if [[ "$MODE" != "oled-only" ]]; then
 import _rpi_ws281x
 import board
 import neopixel
+import adafruit_blinka_raspberry_pi_pwm
 print("rpi_ws281x backend import: OK")
 print("RGB/NeoPixel Python imports: OK")
 PY
@@ -292,6 +359,9 @@ case "$MODE" in
     moodlight)
         printf 'Expected after boot: fan ON, OLED ON, RGB moodlight running.\n'
         ;;
+    solid-color)
+        printf 'Expected after boot: fan ON, OLED ON, RGB solid %s at brightness %s.\n' "$SOLID_COLOR" "$SOLID_BRIGHTNESS"
+        ;;
     oled-only)
         printf 'Expected after boot: fan powered by case hardware, OLED ON, RGB services disabled.\n'
         ;;
@@ -300,7 +370,7 @@ esac
 printf '\nUseful tests after reboot:\n'
 printf '  python3 %s/examples/clock.py -d ssd1305 -i i2c --width 128 --height 64\n' "$LUMA_DIR"
 printf '  python3 %s/sysinfo.py\n' "$INSTALL_DIR"
-printf '  systemctl status minitower_moodlight minitower_oled minitower_disable_led --no-pager -l\n'
+printf '  systemctl status minitower_moodlight minitower_oled minitower_disable_led minitower_solid_color --no-pager -l\n'
 printf '  systemctl --failed\n'
 
 if [[ "$NO_REBOOT" -eq 1 ]]; then
